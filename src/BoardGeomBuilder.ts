@@ -510,8 +510,97 @@ export class BoardGeomBuilder {
       this.padGeoms = this.padGeoms.map((pg) =>
         colorize(colors.copper, subtract(pg, cyGeom)),
       )
+    } else if (
+      hole.hole_shape === "pill" &&
+      hole.hole_width &&
+      hole.hole_height
+    ) {
+      // Regular pill hole - no rotation
+      const shouldRotate = hole.hole_height > hole.hole_width
+      const holeWidth = shouldRotate ? hole.hole_height : hole.hole_width
+      const holeHeight = shouldRotate ? hole.hole_width : hole.hole_height
+      const holeRadius = holeHeight / 2
+      const rectLength = Math.abs(holeWidth - holeHeight)
+
+      const pillHole = union(
+        cuboid({
+          center: [hole.x, hole.y, 0],
+          size: shouldRotate
+            ? [holeHeight, rectLength, this.ctx.pcbThickness * 1.5]
+            : [rectLength, holeHeight, this.ctx.pcbThickness * 1.5],
+        }),
+        cylinder({
+          center: shouldRotate
+            ? [hole.x, hole.y - rectLength / 2, 0]
+            : [hole.x - rectLength / 2, hole.y, 0],
+          radius: holeRadius,
+          height: this.ctx.pcbThickness * 1.5,
+        }),
+        cylinder({
+          center: shouldRotate
+            ? [hole.x, hole.y + rectLength / 2, 0]
+            : [hole.x + rectLength / 2, hole.y, 0],
+          radius: holeRadius,
+          height: this.ctx.pcbThickness * 1.5,
+        }),
+      )
+
+      this.boardGeom = subtract(this.boardGeom, pillHole)
+      // Remove hole material from any pads it intersects
+      this.padGeoms = this.padGeoms.map((pg) =>
+        colorize(colors.copper, subtract(pg, pillHole)),
+      )
+    } else if (
+      hole.hole_shape === "rotated_pill" &&
+      hole.hole_width &&
+      hole.hole_height
+    ) {
+      // Rotated pill hole - requires ccw_rotation
+      const shouldRotate = hole.hole_height > hole.hole_width
+      const holeWidth = shouldRotate ? hole.hole_height : hole.hole_width
+      const holeHeight = shouldRotate ? hole.hole_width : hole.hole_height
+      const holeRadius = holeHeight / 2
+      const rectLength = Math.abs(holeWidth - holeHeight)
+
+      // Create pill hole at origin first
+      let pillHole = union(
+        cuboid({
+          center: [0, 0, 0],
+          size: shouldRotate
+            ? [holeHeight, rectLength, this.ctx.pcbThickness * 1.5]
+            : [rectLength, holeHeight, this.ctx.pcbThickness * 1.5],
+        }),
+        cylinder({
+          center: shouldRotate
+            ? [0, -rectLength / 2, 0]
+            : [-rectLength / 2, 0, 0],
+          radius: holeRadius,
+          height: this.ctx.pcbThickness * 1.5,
+        }),
+        cylinder({
+          center: shouldRotate
+            ? [0, rectLength / 2, 0]
+            : [rectLength / 2, 0, 0],
+          radius: holeRadius,
+          height: this.ctx.pcbThickness * 1.5,
+        }),
+      )
+
+      // Apply rotation (ccw_rotation is in degrees)
+      if (hole.ccw_rotation !== undefined) {
+        const rotationRadians = (hole.ccw_rotation * Math.PI) / 180
+        pillHole = rotateZ(rotationRadians, pillHole)
+      }
+
+      // Then translate to final position
+      pillHole = translate([hole.x, hole.y, 0], pillHole)
+
+      this.boardGeom = subtract(this.boardGeom, pillHole)
+      // Remove hole material from any pads it intersects
+      this.padGeoms = this.padGeoms.map((pg) =>
+        colorize(colors.copper, subtract(pg, pillHole)),
+      )
     }
-    // TODO: Handle other hole shapes if necessary
   }
 
   private processPad(pad: PcbSmtPad) {
